@@ -31,10 +31,14 @@ def save_to_db(category, title, summary, original):
     df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
     df.to_csv(DB_FILE, index=False)
 
-# --- AI 處理邏輯 ---
+# --- AI 處理邏輯 (加入了防 404 報錯機制) ---
 def process_content(text, key):
     genai.configure(api_key=key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    
+    # 自動尋找可用模型，解決 NotFound 報錯
+    available_models = [m.name.replace('models/', '') for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+    best_model = "gemini-1.5-flash" if "gemini-1.5-flash" in available_models else available_models[0]
+    model = genai.GenerativeModel(best_model)
     
     prompt = f"""
     你是一個知識架構專家。請分析以下內容：
@@ -63,18 +67,26 @@ if api_key:
     if st.button("✨ 一鍵自動分類存儲"):
         if input_text:
             with st.spinner("AI 正在解析並自動歸類..."):
-                raw_res = process_content(input_text, api_key)
-                
-                # 解析 AI 返回的內容 (簡單解析)
-                lines = raw_res.split('\n')
-                cat = lines[0].replace("分類：", "").strip()
-                title = lines[1].replace("標題：", "").strip()
-                summary = "\n".join(lines[2:]).replace("精華：", "").strip()
-                
-                # 存入 CSV
-                save_to_db(cat, title, summary, input_text)
-                st.success(f"已成功自動歸類至：{cat}")
-                st.balloons()
+                try:
+                    raw_res = process_content(input_text, api_key)
+                    
+                    # 解析 AI 返回的內容 (增強容錯處理)
+                    lines = raw_res.strip().split('\n')
+                    cat = "📥 雜項收件箱"
+                    title = "未命名知識"
+                    summary = raw_res
+                    
+                    for line in lines:
+                        if line.startswith("分類："): cat = line.replace("分類：", "").strip()
+                        elif line.startswith("標題："): title = line.replace("標題：", "").strip()
+                        elif line.startswith("精華："): summary = raw_res.split("精華：")[-1].strip()
+                    
+                    # 存入 CSV
+                    save_to_db(cat, title, summary, input_text)
+                    st.success(f"已成功自動歸類至：{cat}")
+                    st.balloons()
+                except Exception as e:
+                    st.error(f"處理失敗，錯誤信息：{e}")
         else:
             st.warning("請先輸入內容")
 
@@ -95,9 +107,4 @@ if api_key:
     with tabs[3]:
         st.dataframe(df_all, use_container_width=True)
 else:
-    st.warning("👈 請在左側輸入 API Key 啟動系統")
-
-# 提供下載數據庫的功能
-if os.path.exists(DB_FILE):
-    with open(DB_FILE, 'rb') as f:
-        st.sidebar.download_button("📥 下載備份數據庫 (CSV)", f, file_name="my_knowledge_backup.csv")
+    st.warning("👈 請在左側輸入 API Key 啟動系統
