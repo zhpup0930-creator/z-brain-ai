@@ -9,49 +9,49 @@ st.set_page_config(page_title="我的 AI 知识收割机", layout="wide")
 
 DB_FILE = "knowledge_base.csv"
 
-# --- 側邊欄：配置與數據安全中心 ---
+# --- 侧边栏：配置与数据安全中心 ---
 with st.sidebar:
-    st.title("🧠 知識收割機")
-    api_key = st.text_input("🔑 輸入 Gemini API Key:", type="password")
+    st.title("🧠 知识收割机")
+    api_key = st.text_input("🔑 输入 Gemini API Key:", type="password")
     
     st.divider()
-    st.subheader("💾 數據安全中心 (防丟失)")
+    st.subheader("💾 数据安全中心 (防丢失)")
     
-    # 恢復數據庫功能
-    uploaded_db = st.file_uploader("📂 1. 恢復數據庫 (上傳備份的 CSV)", type="csv")
+    # 恢复数据库功能
+    uploaded_db = st.file_uploader("📂 1. 恢复数据库 (上传备份的 CSV)", type="csv")
     if uploaded_db is not None:
         try:
             df_upload = pd.read_csv(uploaded_db)
             df_upload.to_csv(DB_FILE, index=False)
-            st.success("✅ 數據庫已成功恢復！")
+            st.success("✅ 数据库已成功恢复！")
         except:
-            st.error("文件格式錯誤")
+            st.error("文件格式错误，请上传正确的 CSV 备份文件。")
 
-    # 下載數據庫功能
+    # 下载数据库功能
     if os.path.exists(DB_FILE):
         with open(DB_FILE, 'rb') as f:
-            st.download_button("📥 2. 備份當前數據庫 (存入 Google Drive)", f, file_name=f"knowledge_backup_{datetime.now().strftime('%m%d')}.csv")
+            st.download_button("📥 2. 备份当前数据库 (存入 Google Drive)", f, file_name=f"knowledge_backup_{datetime.now().strftime('%m%d')}.csv")
             
-    st.caption("提示：為防止雲端重啟導致數據丟失，請在關閉網頁前點擊【備份】。下次使用時【上傳】恢復即可。")
+    st.caption("提示：为防止云端服务器休眠导致数据丢失，请在关闭网页前点击【备份】。下次使用时【上传】恢复即可。")
 
-# --- 數據庫初始化 ---
+# --- 数据库初始化 ---
 if not os.path.exists(DB_FILE):
-    df = pd.DataFrame(columns=["時間", "分類", "標題", "精華內容", "原始信息"])
+    df = pd.DataFrame(columns=["时间", "分类", "标题", "精华内容", "原始信息"])
     df.to_csv(DB_FILE, index=False)
 
 def save_to_db(category, title, summary, original):
     df = pd.read_csv(DB_FILE)
     new_data = {
-        "時間": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "分類": category,
-        "標題": title,
-        "精華內容": summary,
+        "时间": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "分类": category,
+        "标题": title,
+        "精华内容": summary,
         "原始信息": original
     }
     df = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
     df.to_csv(DB_FILE, index=False)
 
-# --- AI 處理邏輯 ---
+# --- AI 处理逻辑 ---
 def process_content(text, key):
     genai.configure(api_key=key)
     available_models = [m.name.replace('models/', '') for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
@@ -59,62 +59,63 @@ def process_content(text, key):
     model = genai.GenerativeModel(best_model)
     
     prompt = f"""
-    你是一個知識架構專家。請分析以下內容：
+    你是一个知识架构专家。请分析以下内容：
     "{text}"
     
-    任務：
-    1. 從這四個標籤中選一個最合適的：【💰 財富理財】、【🏋️ 運動科學】、【🧠 認知覺醒】、【📥 雜項收件箱】。
-    2. 給這段知識起一個簡短的標題。
-    3. 提取核心乾貨（去掉廢話，3點清單）。
+    任务：
+    1. 从这四个标签中选一个最合适的：【💰 财富理财】、【🏋️ 运动科学】、【🧠 认知觉醒】、【📥 杂项收件箱】。
+    2. 给这段知识起一个简短的标题。
+    3. 提取核心干货（去掉废话，提炼成3点清晰的实操清单）。
     
-    請嚴格按此格式返回，不要有其他廢話：
-    分類：[標籤名稱]
-    標題：[標題名稱]
-    精華：[提純後的內容]
+    请严格按此格式使用简体中文返回，不要有其他废话：
+    分类：[标签名称]
+    标题：[标题名称]
+    精华：[提纯后的内容]
     """
     return model.generate_content(prompt).text
 
 # --- 主界面 ---
-st.title("🚀 碎片知識自動收割系統")
+st.title("🚀 碎片知识自动收割系统")
 
 if api_key:
-    # 1. 投餵區
-    input_text = st.text_area("在此粘貼抖音文案或碎片信息：", height=150)
+    # 1. 投喂区
+    input_text = st.text_area("在此粘贴抖音文案或碎片信息：", height=150)
     
-    if st.button("✨ 一鍵自動分類存儲"):
+    if st.button("✨ 一键自动分类存储"):
         if input_text:
-            with st.spinner("AI 正在解析並自動歸類..."):
+            with st.spinner("AI 正在解析并自动归类..."):
                 try:
                     raw_res = process_content(input_text, api_key)
                     lines = raw_res.strip().split('\n')
-                    cat, title, summary = "📥 雜項收件箱", "未命名", raw_res
+                    cat, title, summary = "📥 杂项收件箱", "未命名", raw_res
                     
+                    # 稳健的解析逻辑
                     for line in lines:
-                        if line.startswith("分類："): cat = line.replace("分類：", "").strip()
-                        elif line.startswith("標題："): title = line.replace("標題：", "").strip()
-                        elif line.startswith("精華："): summary = raw_res.split("精華：")[-1].strip()
+                        if line.startswith("分类："): cat = line.replace("分类：", "").strip()
+                        elif line.startswith("标题："): title = line.replace("标题：", "").strip()
+                        elif line.startswith("精华："): summary = raw_res.split("精华：")[-1].strip()
                     
                     save_to_db(cat, title, summary, input_text)
-                    st.success(f"已成功歸類至：{cat}")
+                    st.success(f"已成功归类至：{cat}")
                 except Exception as e:
-                    st.error(f"處理失敗：{e}")
+                    st.error(f"处理失败，错误信息：{e}")
         else:
-            st.warning("請先輸入內容")
+            st.warning("请先输入需要处理的内容。")
 
     st.divider()
 
-    # 2. 展示區
-    st.subheader("🗂️ 我的專屬知識庫")
+    # 2. 展示区
+    st.subheader("🗂️ 我的专属知识库")
     df_all = pd.read_csv(DB_FILE)
     
     if len(df_all) > 0:
-        tabs = st.tabs(["💰 財富", "🏋️ 運動", "🧠 認知", "📥 全部數據"])
+        tabs = st.tabs(["💰 财富", "🏋️ 运动", "🧠 认知", "📥 全部数据"])
         
-        with tabs[0]: st.table(df_all[df_all['分類'].str.contains("財富")][["時間", "標題", "精華內容"]])
-        with tabs[1]: st.table(df_all[df_all['分類'].str.contains("運動")][["時間", "標題", "精華內容"]])
-        with tabs[2]: st.table(df_all[df_all['分類'].str.contains("認知")][["時間", "標題", "精華內容"]])
+        with tabs[0]: st.table(df_all[df_all['分类'].str.contains("财富")][["时间", "标题", "精华内容"]])
+        with tabs[1]: st.table(df_all[df_all['分类'].str.contains("运动")][["时间", "标题", "精华内容"]])
+        with tabs[2]: st.table(df_all[df_all['分类'].str.contains("认知")][["时间", "标题", "精华内容"]])
         with tabs[3]: st.dataframe(df_all, use_container_width=True)
     else:
-        st.info("知識庫目前是空的。快去粘貼第一條知識吧！或者從左側上傳備份恢復。")
+        st.info("知识库目前是空的。快去粘贴第一条知识吧！或者从左侧上传备份恢复历史数据。")
 else:
-    st.warning("👈 請在左側輸入 API Key 啟動系統")
+    st.warning("👈 请在左侧输入 API Key 启动系统")
