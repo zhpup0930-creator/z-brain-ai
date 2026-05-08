@@ -107,4 +107,9 @@ if api_key:
     with tabs[3]:
         st.dataframe(df_all, use_container_width=True)
 else:
-    st.warning("👈 請在左側輸入 API Key 啟動系統
+    st.warning("👈 請在左側輸入 API Key 啟動系統")
+
+# 提供下載數據庫的功能
+if os.path.exists(DB_FILE):
+    with open(DB_FILE, 'rb') as f:
+        st.sidebar.download_button("📥 下載備份數據庫 (CSV)", f, file_name="my_knowledge_backup.csv")
