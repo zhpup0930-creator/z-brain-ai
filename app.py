@@ -73,12 +73,32 @@ def save_to_db(category, title, summary, original):
     new_data = {"时间": datetime.now().strftime("%Y-%m-%d %H:%M"), "分类": category, "标题": title, "精华内容": summary, "原始信息": original}
     pd.concat([df, pd.DataFrame([new_data])], ignore_index=True).to_csv(DB_FILE, index=False)
 
-# --- AI 提纯逻辑 (核弹级修复：强制锁定高额度 8B 模型) ---
+# --- AI 提纯逻辑 (终极智能模型选择，防 404，防 429) ---
 def process_content(text, key):
     genai.configure(api_key=key)
     
-    # 彻底写死模型路径，绝不允许系统自动乱跳到 2.5 版本
-    model = genai.GenerativeModel("models/gemini-1.5-flash-8b")
+    # 1. 抓取所有支持的模型
+    available_models = [m.name.replace('models/', '') for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+    
+    # 2. 智能筛选：优先找 1.5 版本，且避开坑人的 8b 版本
+    best_model = None
+    for m in available_models:
+        if "1.5-flash" in m and "8b" not in m:
+            best_model = m
+            break
+            
+    # 3. 如果没找到，备选方案：只要不是 2.5 (限额低) 就行
+    if not best_model:
+        for m in available_models:
+            if "2.5" not in m:
+                best_model = m
+                break
+                
+    # 4. 终极兜底
+    if not best_model:
+        best_model = available_models[0]
+        
+    model = genai.GenerativeModel(best_model)
     
     prompt = f"""
     你是一个知识架构专家。请对以下内容进行深度提纯：
@@ -104,7 +124,7 @@ if api_key:
     
     if st.button("✨ 一键自动分类存储"):
         if input_text:
-            with st.spinner("AI 正在使用高额度模型深度解析..."):
+            with st.spinner("AI 正在智能筛选模型并深度解析..."):
                 try:
                     raw_res = process_content(input_text, api_key)
                     lines = raw_res.strip().split('\n')
@@ -119,7 +139,10 @@ if api_key:
                     st.success(f"✅ 已存入：{cat}")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"处理失败，如果看到这个说明 API Key 填写有误或网络异常：{e}")
+                    if "429" in str(e) or "quota" in str(e).lower():
+                        st.error("🚦 速度太快啦！请喝口水，休息 1 分钟后再试！")
+                    else:
+                        st.error(f"处理失败，错误详情：{e}")
         else:
             st.warning("请先输入内容")
     
