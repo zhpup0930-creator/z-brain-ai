@@ -43,55 +43,56 @@ with st.sidebar:
     
     st.divider()
     st.error("⚠️ **今日备份提醒**")
-    
-    # 【修复重点】：实时读取文件内容，确保下载按钮永远有效
     if os.path.exists(DB_FILE):
         try:
             with open(DB_FILE, "rb") as file:
-                btn = st.download_button(
+                st.download_button(
                     label="🚨 点击下载备份 (存入 Google Drive)",
                     data=file,
                     file_name=f"我的知识库备份_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                     mime="text/csv"
                 )
-        except Exception as e:
-            st.error(f"准备下载文件时出错: {e}")
+        except: pass
 
     st.divider()
-    st.subheader("📂 恢复数据")
+    st.subheader("📂 恢复历史数据")
     uploaded_db = st.file_uploader("上传备份的 CSV", type="csv")
     if uploaded_db is not None:
         try:
             df_upload = pd.read_csv(uploaded_db)
             if "分类" in df_upload.columns:
                 df_upload.to_csv(DB_FILE, index=False)
-                st.success("✅ 数据已恢复！请刷新网页。")
-                st.rerun() # 自动刷新网页以显示新数据
+                st.success("✅ 数据已恢复！")
+                st.rerun()
         except:
             st.error("恢复失败")
 
+# --- 存储逻辑 ---
 def save_to_db(category, title, summary, original):
     df = pd.read_csv(DB_FILE)
     new_data = {"时间": datetime.now().strftime("%Y-%m-%d %H:%M"), "分类": category, "标题": title, "精华内容": summary, "原始信息": original}
-    df_new = pd.concat([df, pd.DataFrame([new_data])], ignore_index=True)
-    df_new.to_csv(DB_FILE, index=False)
+    pd.concat([df, pd.DataFrame([new_data])], ignore_index=True).to_csv(DB_FILE, index=False)
 
-# --- AI 提纯逻辑 ---
+# --- AI 提纯逻辑 (取消 3 点限制，改为灵活提纯) ---
 def process_content(text, key):
     genai.configure(api_key=key)
-    # 获取可用模型
     models = [m.name.replace('models/', '') for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
     model_name = "gemini-1.5-flash" if "gemini-1.5-flash" in models else models[0]
     model = genai.GenerativeModel(model_name)
     
     prompt = f"""
-    你是一个知识架构专家。请分析以下内容：
+    你是一个知识架构专家。请对以下内容进行深度提纯：
     "{text}"
+    
     任务：
-    1. 从以下 8 个标签中选一个：【💰 财富理财】、【📈 商业思维】、【🏋️ 运动健身】、【🥗 饮食营养】、【🎭 心理人性】、【💬 社交情商】、【🚀 自我成长】、【📥 杂项收件箱】。
-    2. 起一个简短标题。
-    3. 提炼 3 点实操干货。
-    格式：分类：\n标题：\n精华：
+    1. 分类：从以下标签选一个：【💰 财富理财】、【📈 商业思维】、【🏋️ 运动健身】、【🥗 饮食营养】、【🎭 心理人性】、【💬 社交情商】、【🚀 自我成长】、【📥 杂项收件箱】。
+    2. 标题：起一个极其简短、能一眼看穿本质的标题。
+    3. 精华：**这是核心要求**。请根据内容的实际信息量提取干货。不要为了凑数而强行罗列，也不要为了简练而漏掉关键步骤。有几点写几点，每一点都要是能直接启发思考或指导行动的。
+    
+    请使用简体中文，按以下格式严格返回：
+    分类：[标签名]
+    标题：[标题名]
+    精华：[内容列表]
     """
     return model.generate_content(prompt).text
 
@@ -103,11 +104,12 @@ if api_key:
     
     if st.button("✨ 一键自动分类存储"):
         if input_text:
-            with st.spinner("AI 正在深度解析..."):
+            with st.spinner("AI 正在根据内容深度进行个性化提纯..."):
                 try:
                     raw_res = process_content(input_text, api_key)
                     lines = raw_res.strip().split('\n')
                     cat, title, summary = "📥 杂项收件箱", "未命名", raw_res
+                    
                     for line in lines:
                         if "分类：" in line: cat = line.split("：")[-1].strip()
                         elif "标题：" in line: title = line.split("：")[-1].strip()
@@ -115,7 +117,7 @@ if api_key:
                     
                     save_to_db(cat, title, summary, input_text)
                     st.success(f"✅ 已存入：{cat}")
-                    st.rerun() # 存储后强制刷新，让下载按钮和表格同步更新
+                    st.rerun()
                 except Exception as e:
                     st.error(f"处理失败：{e}")
         else:
