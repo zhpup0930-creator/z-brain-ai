@@ -73,12 +73,12 @@ def save_to_db(category, title, summary, original):
     new_data = {"时间": datetime.now().strftime("%Y-%m-%d %H:%M"), "分类": category, "标题": title, "精华内容": summary, "原始信息": original}
     pd.concat([df, pd.DataFrame([new_data])], ignore_index=True).to_csv(DB_FILE, index=False)
 
-# --- AI 提纯逻辑 (取消 3 点限制，改为灵活提纯) ---
+# --- AI 提纯逻辑 (核弹级修复：强制锁定高额度 8B 模型) ---
 def process_content(text, key):
     genai.configure(api_key=key)
-    models = [m.name.replace('models/', '') for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-    model_name = "gemini-1.5-flash" if "gemini-1.5-flash" in models else models[0]
-    model = genai.GenerativeModel(model_name)
+    
+    # 彻底写死模型路径，绝不允许系统自动乱跳到 2.5 版本
+    model = genai.GenerativeModel("models/gemini-1.5-flash-8b")
     
     prompt = f"""
     你是一个知识架构专家。请对以下内容进行深度提纯：
@@ -87,7 +87,7 @@ def process_content(text, key):
     任务：
     1. 分类：从以下标签选一个：【💰 财富理财】、【📈 商业思维】、【🏋️ 运动健身】、【🥗 饮食营养】、【🎭 心理人性】、【💬 社交情商】、【🚀 自我成长】、【📥 杂项收件箱】。
     2. 标题：起一个极其简短、能一眼看穿本质的标题。
-    3. 精华：**这是核心要求**。请根据内容的实际信息量提取干货。不要为了凑数而强行罗列，也不要为了简练而漏掉关键步骤。有几点写几点，每一点都要是能直接启发思考或指导行动的。
+    3. 精华：根据内容的实际信息量提取干货。有几点写几点，每一点都要是能直接启发思考或指导行动的。
     
     请使用简体中文，按以下格式严格返回：
     分类：[标签名]
@@ -104,7 +104,7 @@ if api_key:
     
     if st.button("✨ 一键自动分类存储"):
         if input_text:
-            with st.spinner("AI 正在根据内容深度进行个性化提纯..."):
+            with st.spinner("AI 正在使用高额度模型深度解析..."):
                 try:
                     raw_res = process_content(input_text, api_key)
                     lines = raw_res.strip().split('\n')
@@ -119,7 +119,7 @@ if api_key:
                     st.success(f"✅ 已存入：{cat}")
                     st.rerun()
                 except Exception as e:
-                    st.error(f"处理失败：{e}")
+                    st.error(f"处理失败，如果看到这个说明 API Key 填写有误或网络异常：{e}")
         else:
             st.warning("请先输入内容")
     
