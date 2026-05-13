@@ -57,22 +57,17 @@ def save_to_db(category, title, summary, original):
     new_data = {"时间": datetime.now().strftime("%Y-%m-%d %H:%M"), "分类": category, "标题": title, "精华内容": summary, "原始信息": original}
     pd.concat([df, pd.DataFrame([new_data])], ignore_index=True).to_csv(DB_FILE, index=False)
 
-# --- 终极核心逻辑：直接锁定 2.0-flash-lite 高额度轻量模型 ---
+# --- 终极核心逻辑：使用 2.0-flash 主力模型 ---
 def process_content(text, key):
     genai.configure(api_key=key)
     
-    # 根据你截图的真实名单，直接绑定这个最高效的模型
-    model = genai.GenerativeModel("gemini-2.0-flash-lite")
+    # 绑定 2.0 主力版本，避开被锁死的 lite 版
+    model = genai.GenerativeModel("gemini-2.0-flash")
     
     prompt = f"""
     你是一个知识架构专家。请对以下内容进行深度提纯：
     "{text}"
-    
-    任务：
-    1. 分类：选一个：【💰 财富理财】、【📈 商业思维】、【🏋️ 运动健身】、【🥗 饮食营养】、【🎭 心理人性】、【💬 社交情商】、【🚀 自我成长】、【📥 杂项收件箱】。
-    2. 标题：简短本质。
-    3. 精华：有几点干货写几点，直接启发思考。
-    
+    任务：1.分类：选一个：【💰 财富理财】、【📈 商业思维】、【🏋️ 运动健身】、【🥗 饮食营养】、【🎭 心理人性】、【💬 社交情商】、【🚀 自我成长】、【📥 杂项收件箱】。2.标题：简短本质。3.精华：有几点干货写几点，直接启发思考。
     格式使用简体中文：\n分类：\n标题：\n精华：
     """
     return model.generate_content(prompt).text
@@ -99,8 +94,13 @@ if api_key:
                     st.success(f"✅ 已存入：{cat}")
                     st.rerun()
                 except Exception as e:
-                    # 如果这都能错，只会是网络问题或者真的一天点了几千次
-                    st.error(f"🚨 运行失败：{e}")
+                    error_msg = str(e)
+                    if "limit: 0" in error_msg:
+                        st.error("🚨 致命错误：你的节点可能跳到了欧洲，或者此 Google 账号已被彻底封禁免费额度！请更换美国/日本节点，或者换一个全新的 Google 账号重新申请 API Key！")
+                    elif "quota" in error_msg.lower():
+                        st.error("🚦 速度太快！请休息 1 分钟再试。")
+                    else:
+                        st.error(f"🚨 运行失败：{error_msg}")
         else:
             st.warning("请先输入内容")
     
