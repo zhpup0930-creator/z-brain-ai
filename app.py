@@ -77,7 +77,7 @@ def process_content(text, key):
     genai.configure(api_key=key)
     
     # 直接硬绑定目前全球免费额度最高、最稳定的官方名字，绝不去查列表！
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("gemini-pro")
     
     prompt = f"""
     你是一个知识架构专家。请对以下内容进行深度提纯：
