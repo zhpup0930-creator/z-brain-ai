@@ -8,21 +8,13 @@ import streamlit.components.v1 as components
 # 1. 网页配置
 st.set_page_config(page_title="我的 AI 知识收割机", layout="wide")
 
-# --- 注入防关闭代码 ---
 components.html(
-    """
-    <script>
-    window.parent.onbeforeunload = function() {
-        return "数据尚未备份，确定离开吗？";
-    };
-    </script>
-    """,
+    """<script>window.parent.onbeforeunload = function() { return "数据尚未备份，确定离开吗？"; };</script>""",
     height=0,
 )
 
 DB_FILE = "knowledge_base.csv"
 
-# --- 数据库初始化逻辑 ---
 def init_db():
     if not os.path.exists(DB_FILE):
         pd.DataFrame(columns=["时间", "分类", "标题", "精华内容", "原始信息"]).to_csv(DB_FILE, index=False)
@@ -36,7 +28,6 @@ def init_db():
 
 init_db()
 
-# --- 侧边栏配置 ---
 with st.sidebar:
     st.title("🧠 知识收割机")
     api_key = st.text_input("🔑 输入 API Key:", type="password")
@@ -46,12 +37,7 @@ with st.sidebar:
     if os.path.exists(DB_FILE):
         try:
             with open(DB_FILE, "rb") as file:
-                st.download_button(
-                    label="🚨 点击下载备份 (存入 Google Drive)",
-                    data=file,
-                    file_name=f"我的知识库备份_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                    mime="text/csv"
-                )
+                st.download_button(label="🚨 点击下载备份 (存入 G盘)", data=file, file_name=f"我的知识库备份_{datetime.now().strftime('%m%d_%H%M')}.csv", mime="text/csv")
         except: pass
 
     st.divider()
@@ -64,35 +50,58 @@ with st.sidebar:
                 df_upload.to_csv(DB_FILE, index=False)
                 st.success("✅ 数据已恢复！")
                 st.rerun()
-        except:
-            st.error("恢复失败")
+        except: st.error("恢复失败")
 
 def save_to_db(category, title, summary, original):
     df = pd.read_csv(DB_FILE)
     new_data = {"时间": datetime.now().strftime("%Y-%m-%d %H:%M"), "分类": category, "标题": title, "精华内容": summary, "原始信息": original}
     pd.concat([df, pd.DataFrame([new_data])], ignore_index=True).to_csv(DB_FILE, index=False)
 
-# --- AI 提纯逻辑 (终极暴力破解：不做任何多余请求，直连主力大模型) ---
+# --- 终极雷达扫描：自动抓取可用模型，绝对不再 404 ---
 def process_content(text, key):
     genai.configure(api_key=key)
     
-    # 直接硬绑定目前全球免费额度最高、最稳定的官方名字，绝不去查列表！
-    model = genai.GenerativeModel("gemini-pro")
+    # 1. 把 Google 服务器里当前开放给这个 API 的所有文本模型抓出来
+    models_info = genai.list_models()
+    available_models = [m.name.replace('models/', '') for m in models_info if 'generateContent' in m.supported_generation_methods]
     
-    prompt = f"""
-    你是一个知识架构专家。请对以下内容进行深度提纯：
-    "{text}"
+    if not available_models:
+        raise Exception("API Key 权限异常：你的账号下没有任何可用的生成模型！")
+
+    # 2. 智能优选逻辑（避开每日限额20次的 2.5 版本）
+    best_model = None
     
-    任务：
-    1. 分类：从以下标签选一个：【💰 财富理财】、【📈 商业思维】、【🏋️ 运动健身】、【🥗 饮食营养】、【🎭 心理人性】、【💬 社交情商】、【🚀 自我成长】、【📥 杂项收件箱】。
-    2. 标题：起一个极其简短、能一眼看穿本质的标题。
-    3. 精华：根据内容的实际信息量提取干货。有几点写几点，每一点都要是能直接启发思考或指导行动的。
+    # 优先找官方最新改名的稳定版
+    for m in available_models:
+        if "1.5-flash" in m and "8b" not in m:
+            best_model = m
+            break
+            
+    if not best_model:
+        for m in available_models:
+            if "1.0-pro" in m:  # Google 最近把 pro 改名成了 1.0-pro
+                best_model = m
+                break
+
+    # 如果还没找到，选一个不是 2.5 的任何模型
+    if not best_model:
+        for m in available_models:
+            if "2.5" not in m:
+                best_model = m
+                break
+                
+    # 实在不行，只能拿列表里第一个
+    if not best_model:
+        best_model = available_models[0]
+
+    # 将最终选定的模型名称传给网页显示，让我们死个明白
+    st.session_state['used_model'] = best_model
+
+    model = genai.GenerativeModel(best_model)
+    prompt = f"""你是一个知识架构专家。对以下内容进行深度提纯："{text}"
+    任务：1.分类：选一个：【💰 财富理财】、【📈 商业思维】、【🏋️ 运动健身】、【🥗 饮食营养】、【🎭 心理人性】、【💬 社交情商】、【🚀 自我成长】、【📥 杂项收件箱】。2.标题：简短本质。3.精华：有几点干货写几点，直接启发思考。
+    格式使用简体中文：\n分类：\n标题：\n精华："""
     
-    请使用简体中文，按以下格式严格返回：
-    分类：[标签名]
-    标题：[标题名]
-    精华：[内容列表]
-    """
     return model.generate_content(prompt).text
 
 # --- 主界面 ---
@@ -103,12 +112,15 @@ if api_key:
     
     if st.button("✨ 一键自动分类存储"):
         if input_text:
-            with st.spinner("AI 正在光速解析..."):
+            with st.spinner("AI 雷达正在扫描可用模型并处理..."):
                 try:
                     raw_res = process_content(input_text, api_key)
+                    
+                    # 打印出雷达抓取到的模型名字
+                    st.info(f"🤖 本次处理使用的 AI 模型是：`{st.session_state.get('used_model', '未知')}`")
+                    
                     lines = raw_res.strip().split('\n')
                     cat, title, summary = "📥 杂项收件箱", "未命名", raw_res
-                    
                     for line in lines:
                         if "分类：" in line: cat = line.split("：")[-1].strip()
                         elif "标题：" in line: title = line.split("：")[-1].strip()
@@ -116,16 +128,18 @@ if api_key:
                     
                     save_to_db(cat, title, summary, input_text)
                     st.success(f"✅ 已存入：{cat}")
-                    st.rerun()
                 except Exception as e:
-                    # 打印出最真实的错误信息，如果是别的问题，我们可以一眼看穿
-                    st.error(f"🚨 运行失败，Google 原生报错如下：\n{e}")
+                    # 如果这还报错，把 Google 给的所有模型名单全打印出来！
+                    try:
+                        genai.configure(api_key=api_key)
+                        all_m = [m.name for m in genai.list_models()]
+                        st.error(f"🚨 彻底崩溃了！你的 API 账号能用的模型列表是：{all_m}")
+                    except:
+                        st.error(f"🚨 运行失败，原生报错如下：\n{e}")
         else:
             st.warning("请先输入内容")
     
     st.divider()
-    
-    # --- 展示区 ---
     try:
         df_all = pd.read_csv(DB_FILE)
         if len(df_all) > 0:
@@ -135,9 +149,7 @@ if api_key:
                 with tabs[i]:
                     filtered_df = df_all[df_all['分类'].str.contains(cats_list[i], na=False)]
                     st.table(filtered_df[["时间", "标题", "精华内容"]])
-            with tabs[7]:
-                st.dataframe(df_all, use_container_width=True)
-    except:
-        st.info("知识库暂无数据。")
+            with tabs[7]: st.dataframe(df_all, use_container_width=True)
+    except: pass
 else:
     st.warning("👈 请在左侧输入 API Key 启动系统")
