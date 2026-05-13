@@ -57,51 +57,24 @@ def save_to_db(category, title, summary, original):
     new_data = {"时间": datetime.now().strftime("%Y-%m-%d %H:%M"), "分类": category, "标题": title, "精华内容": summary, "原始信息": original}
     pd.concat([df, pd.DataFrame([new_data])], ignore_index=True).to_csv(DB_FILE, index=False)
 
-# --- 终极雷达扫描：自动抓取可用模型，绝对不再 404 ---
+# --- 终极核心逻辑：直接锁定 2.0-flash-lite 高额度轻量模型 ---
 def process_content(text, key):
     genai.configure(api_key=key)
     
-    # 1. 把 Google 服务器里当前开放给这个 API 的所有文本模型抓出来
-    models_info = genai.list_models()
-    available_models = [m.name.replace('models/', '') for m in models_info if 'generateContent' in m.supported_generation_methods]
+    # 根据你截图的真实名单，直接绑定这个最高效的模型
+    model = genai.GenerativeModel("gemini-2.0-flash-lite")
     
-    if not available_models:
-        raise Exception("API Key 权限异常：你的账号下没有任何可用的生成模型！")
-
-    # 2. 智能优选逻辑（避开每日限额20次的 2.5 版本）
-    best_model = None
+    prompt = f"""
+    你是一个知识架构专家。请对以下内容进行深度提纯：
+    "{text}"
     
-    # 优先找官方最新改名的稳定版
-    for m in available_models:
-        if "1.5-flash" in m and "8b" not in m:
-            best_model = m
-            break
-            
-    if not best_model:
-        for m in available_models:
-            if "1.0-pro" in m:  # Google 最近把 pro 改名成了 1.0-pro
-                best_model = m
-                break
-
-    # 如果还没找到，选一个不是 2.5 的任何模型
-    if not best_model:
-        for m in available_models:
-            if "2.5" not in m:
-                best_model = m
-                break
-                
-    # 实在不行，只能拿列表里第一个
-    if not best_model:
-        best_model = available_models[0]
-
-    # 将最终选定的模型名称传给网页显示，让我们死个明白
-    st.session_state['used_model'] = best_model
-
-    model = genai.GenerativeModel(best_model)
-    prompt = f"""你是一个知识架构专家。对以下内容进行深度提纯："{text}"
-    任务：1.分类：选一个：【💰 财富理财】、【📈 商业思维】、【🏋️ 运动健身】、【🥗 饮食营养】、【🎭 心理人性】、【💬 社交情商】、【🚀 自我成长】、【📥 杂项收件箱】。2.标题：简短本质。3.精华：有几点干货写几点，直接启发思考。
-    格式使用简体中文：\n分类：\n标题：\n精华："""
+    任务：
+    1. 分类：选一个：【💰 财富理财】、【📈 商业思维】、【🏋️ 运动健身】、【🥗 饮食营养】、【🎭 心理人性】、【💬 社交情商】、【🚀 自我成长】、【📥 杂项收件箱】。
+    2. 标题：简短本质。
+    3. 精华：有几点干货写几点，直接启发思考。
     
+    格式使用简体中文：\n分类：\n标题：\n精华：
+    """
     return model.generate_content(prompt).text
 
 # --- 主界面 ---
@@ -112,13 +85,9 @@ if api_key:
     
     if st.button("✨ 一键自动分类存储"):
         if input_text:
-            with st.spinner("AI 雷达正在扫描可用模型并处理..."):
+            with st.spinner("AI 正在光速解析..."):
                 try:
                     raw_res = process_content(input_text, api_key)
-                    
-                    # 打印出雷达抓取到的模型名字
-                    st.info(f"🤖 本次处理使用的 AI 模型是：`{st.session_state.get('used_model', '未知')}`")
-                    
                     lines = raw_res.strip().split('\n')
                     cat, title, summary = "📥 杂项收件箱", "未命名", raw_res
                     for line in lines:
@@ -128,14 +97,10 @@ if api_key:
                     
                     save_to_db(cat, title, summary, input_text)
                     st.success(f"✅ 已存入：{cat}")
+                    st.rerun()
                 except Exception as e:
-                    # 如果这还报错，把 Google 给的所有模型名单全打印出来！
-                    try:
-                        genai.configure(api_key=api_key)
-                        all_m = [m.name for m in genai.list_models()]
-                        st.error(f"🚨 彻底崩溃了！你的 API 账号能用的模型列表是：{all_m}")
-                    except:
-                        st.error(f"🚨 运行失败，原生报错如下：\n{e}")
+                    # 如果这都能错，只会是网络问题或者真的一天点了几千次
+                    st.error(f"🚨 运行失败：{e}")
         else:
             st.warning("请先输入内容")
     
