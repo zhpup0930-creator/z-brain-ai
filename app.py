@@ -107,3 +107,37 @@ if api_key:
                 try:
                     raw_res = process_content(input_text, api_key)
                     lines = raw_res.strip().split('\n')
+                    cat, title, summary = "📥 杂项收件箱", "未命名", raw_res
+                    
+                    for line in lines:
+                        if "分类：" in line: cat = line.split("：")[-1].strip()
+                        elif "标题：" in line: title = line.split("：")[-1].strip()
+                        elif "精华：" in line: summary = raw_res.split("精华：")[-1].strip()
+                    
+                    save_to_db(cat, title, summary, input_text)
+                    st.success(f"✅ 已存入：{cat}")
+                    st.rerun()
+                except Exception as e:
+                    # 打印出最真实的错误信息，如果是别的问题，我们可以一眼看穿
+                    st.error(f"🚨 运行失败，Google 原生报错如下：\n{e}")
+        else:
+            st.warning("请先输入内容")
+    
+    st.divider()
+    
+    # --- 展示区 ---
+    try:
+        df_all = pd.read_csv(DB_FILE)
+        if len(df_all) > 0:
+            tabs = st.tabs(["💰 财富", "📈 商业", "🏋️ 健身", "🥗 营养", "🎭 人性", "💬 社交", "🚀 成长", "📥 全部"])
+            cats_list = ["财富", "商业", "健身", "营养", "人性", "社交", "成长"]
+            for i in range(7):
+                with tabs[i]:
+                    filtered_df = df_all[df_all['分类'].str.contains(cats_list[i], na=False)]
+                    st.table(filtered_df[["时间", "标题", "精华内容"]])
+            with tabs[7]:
+                st.dataframe(df_all, use_container_width=True)
+    except:
+        st.info("知识库暂无数据。")
+else:
+    st.warning("👈 请在左侧输入 API Key 启动系统")
