@@ -67,38 +67,17 @@ with st.sidebar:
         except:
             st.error("恢复失败")
 
-# --- 存储逻辑 ---
 def save_to_db(category, title, summary, original):
     df = pd.read_csv(DB_FILE)
     new_data = {"时间": datetime.now().strftime("%Y-%m-%d %H:%M"), "分类": category, "标题": title, "精华内容": summary, "原始信息": original}
     pd.concat([df, pd.DataFrame([new_data])], ignore_index=True).to_csv(DB_FILE, index=False)
 
-# --- AI 提纯逻辑 (终极智能模型选择，防 404，防 429) ---
+# --- AI 提纯逻辑 (终极暴力破解：不做任何多余请求，直连主力大模型) ---
 def process_content(text, key):
     genai.configure(api_key=key)
     
-    # 1. 抓取所有支持的模型
-    available_models = [m.name.replace('models/', '') for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-    
-    # 2. 智能筛选：优先找 1.5 版本，且避开坑人的 8b 版本
-    best_model = None
-    for m in available_models:
-        if "1.5-flash" in m and "8b" not in m:
-            best_model = m
-            break
-            
-    # 3. 如果没找到，备选方案：只要不是 2.5 (限额低) 就行
-    if not best_model:
-        for m in available_models:
-            if "2.5" not in m:
-                best_model = m
-                break
-                
-    # 4. 终极兜底
-    if not best_model:
-        best_model = available_models[0]
-        
-    model = genai.GenerativeModel(best_model)
+    # 直接硬绑定目前全球免费额度最高、最稳定的官方名字，绝不去查列表！
+    model = genai.GenerativeModel("gemini-1.5-flash")
     
     prompt = f"""
     你是一个知识架构专家。请对以下内容进行深度提纯：
@@ -124,43 +103,7 @@ if api_key:
     
     if st.button("✨ 一键自动分类存储"):
         if input_text:
-            with st.spinner("AI 正在智能筛选模型并深度解析..."):
+            with st.spinner("AI 正在光速解析..."):
                 try:
                     raw_res = process_content(input_text, api_key)
                     lines = raw_res.strip().split('\n')
-                    cat, title, summary = "📥 杂项收件箱", "未命名", raw_res
-                    
-                    for line in lines:
-                        if "分类：" in line: cat = line.split("：")[-1].strip()
-                        elif "标题：" in line: title = line.split("：")[-1].strip()
-                        elif "精华：" in line: summary = raw_res.split("精华：")[-1].strip()
-                    
-                    save_to_db(cat, title, summary, input_text)
-                    st.success(f"✅ 已存入：{cat}")
-                    st.rerun()
-                except Exception as e:
-                    if "429" in str(e) or "quota" in str(e).lower():
-                        st.error("🚦 速度太快啦！请喝口水，休息 1 分钟后再试！")
-                    else:
-                        st.error(f"处理失败，错误详情：{e}")
-        else:
-            st.warning("请先输入内容")
-    
-    st.divider()
-    
-    # --- 展示区 ---
-    try:
-        df_all = pd.read_csv(DB_FILE)
-        if len(df_all) > 0:
-            tabs = st.tabs(["💰 财富", "📈 商业", "🏋️ 健身", "🥗 营养", "🎭 人性", "💬 社交", "🚀 成长", "📥 全部"])
-            cats_list = ["财富", "商业", "健身", "营养", "人性", "社交", "成长"]
-            for i in range(7):
-                with tabs[i]:
-                    filtered_df = df_all[df_all['分类'].str.contains(cats_list[i], na=False)]
-                    st.table(filtered_df[["时间", "标题", "精华内容"]])
-            with tabs[7]:
-                st.dataframe(df_all, use_container_width=True)
-    except:
-        st.info("知识库暂无数据。")
-else:
-    st.warning("👈 请在左侧输入 API Key 启动系统")
